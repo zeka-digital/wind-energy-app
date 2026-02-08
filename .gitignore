@@ -137,3 +137,27 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+
+# Credentials and sensitive files
+credentials.json
+scada-key.json
+*-key.json
+*.pem
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Scraper results (optional - uncomment if you don't want to commit CSV results)
+# enos_scraper/result/*.csv
