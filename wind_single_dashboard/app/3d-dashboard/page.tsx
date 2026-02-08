@@ -75,15 +75,7 @@ export default function Dashboard3D() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Use environment variable or fallback to local API
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
-        const apiUrl = baseUrl ? `${baseUrl}/api/wind-data` : '/api/wind-data';
-
-        const response = await fetch(apiUrl, {
-          headers: {
-            'ngrok-skip-browser-warning': '69420'
-          }
-        });
+        const response = await fetch('/api/wind-data');
         if (!response.ok) {
           throw new Error('Failed to fetch wind data');
         }
