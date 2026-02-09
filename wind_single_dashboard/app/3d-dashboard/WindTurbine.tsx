@@ -74,24 +74,31 @@ export default function WindTurbine({
 }: WindTurbineProps) {
   const bladesRef = useRef<THREE.Group>(null);
 
-  // Calculate rotation speed based on activePower levels
-  // activePower <= 500: Stop (0)
-  // 501-1000: Slow rotation (Level 1)
-  // 1001-2000: Medium rotation (Level 2)
-  // > 2000: Fast rotation (Level 4)
-  const getRotationSpeed = (power: number): number => {
-    if (power <= 500) {
-      return 0; // Stop
-    } else if (power <= 1000) {
-      return 0.015; // Slow - Level 1
-    } else if (power <= 2000) {
-      return 0.035; // Medium - Level 2
+  // Calculate rotation speed based on windSpeed (REACTIVE to time-travel changes)
+  // This ensures turbine rotation speed changes when viewing historical data
+  const getRotationSpeed = (wind: number, power: number): number => {
+    // If power is very low (< 100), turbine stops completely
+    if (power < 100) {
+      return 0;
+    }
+
+    // Base rotation speed on wind speed for realistic physics
+    // windSpeed 0-3: Very Slow
+    // windSpeed 3-6: Slow rotation
+    // windSpeed 6-9: Medium rotation
+    // windSpeed > 9: Fast rotation
+    if (wind <= 3) {
+      return 0.01; // Very slow
+    } else if (wind <= 6) {
+      return 0.025; // Slow
+    } else if (wind <= 9) {
+      return 0.045; // Medium
     } else {
-      return 0.07; // Fast - Level 4
+      return 0.07; // Fast
     }
   };
 
-  const rotationSpeed = getRotationSpeed(activePower);
+  const rotationSpeed = getRotationSpeed(windSpeed, activePower);
 
   // Get color based on active power
   const powerColor = getPowerColor(activePower);

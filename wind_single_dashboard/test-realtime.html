@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Supabase Realtime</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #fff;
+    }
+    .log {
+      background: #2a2a2a;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      border-left: 4px solid #00ff00;
+    }
+    .error {
+      border-left-color: #ff0000;
+    }
+    .warning {
+      border-left-color: #ffaa00;
+    }
+    .info {
+      border-left-color: #0088ff;
+    }
+    button {
+      background: #00ff00;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+      margin-right: 10px;
+    }
+    button:hover {
+      background: #00dd00;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔴 Supabase Realtime Connection Test</h1>
+  <p>This page will test your Supabase Realtime connection.</p>
+
+  <div>
+    <button onclick="testConnection()">🔌 Test Connection</button>
+    <button onclick="clearLogs()">🧹 Clear Logs</button>
+  </div>
+
+  <div id="logs"></div>
+
+  <script>
+    // Read from .env.local
+    const SUPABASE_URL = 'https://hxgqzxfshumcntgvxyag.supabase.co';
+    const SUPABASE_ANON_KEY = prompt('Enter your SUPABASE_ANON_KEY:');
+
+    if (!SUPABASE_ANON_KEY) {
+      alert('Please provide your Supabase Anon Key!');
+    }
+
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    function log(message, type = 'info') {
+      const logsDiv = document.getElementById('logs');
+      const logEntry = document.createElement('div');
+      logEntry.className = `log ${type}`;
+      logEntry.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong> - ${message}`;
+      logsDiv.insertBefore(logEntry, logsDiv.firstChild);
+      console.log(message);
+    }
+
+    function clearLogs() {
+      document.getElementById('logs').innerHTML = '';
+    }
+
+    async function testConnection() {
+      log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+      log('🧪 Starting Realtime Connection Test...', 'info');
+      log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+
+      // Test 1: Check API connection
+      log('📡 Test 1: Checking API connection...', 'info');
+      try {
+        const { data, error } = await supabase
+          .from('wind_measurements')
+          .select('count')
+          .limit(1);
+
+        if (error) {
+          log(`❌ API Error: ${error.message}`, 'error');
+          log('💡 Fix: Check your SUPABASE_ANON_KEY and table permissions', 'warning');
+          return;
+        }
+        log('✅ API connection working!', 'info');
+      } catch (err) {
+        log(`❌ Connection failed: ${err.message}`, 'error');
+        return;
+      }
+
+      // Test 2: Check Realtime subscription
+      log('📡 Test 2: Setting up Realtime subscription...', 'info');
+
+      const channel = supabase
+        .channel('test_realtime_channel')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'wind_measurements',
+          },
+          (payload) => {
+            log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+            log('🎉 REALTIME MESSAGE RECEIVED!', 'info');
+            log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+            log(`📊 Data: ${JSON.stringify(payload.new)}`, 'info');
+            log(`🏷️ Turbine: ${payload.new.turbine_name}`, 'info');
+            log(`⚡ Power: ${payload.new.active_power} kW`, 'info');
+            log(`🌬️ Wind: ${payload.new.wind_speed} m/s`, 'info');
+            log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'info');
+          }
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            log('✅ REALTIME CONNECTED!', 'info');
+            log('🔍 Waiting for INSERT events...', 'info');
+            log('💡 Now run your scraper to insert data', 'warning');
+          } else if (status === 'CHANNEL_ERROR') {
+            log('❌ Channel error - check your Realtime settings', 'error');
+            log('💡 Fix: Enable Realtime on wind_measurements table', 'warning');
+          } else if (status === 'TIMED_OUT') {
+            log('❌ Connection timed out', 'error');
+            log('💡 Fix: Check your network connection', 'warning');
+          } else if (status === 'CLOSED') {
+            log('🔌 Connection closed', 'warning');
+          } else {
+            log(`📡 Status: ${status}`, 'info');
+          }
+        });
+
+      // Cleanup after 5 minutes
+      setTimeout(() => {
+        log('⏰ Test timeout - cleaning up...', 'warning');
+        supabase.removeChannel(channel);
+      }, 300000);
+    }
+
+    // Auto-start test
+    if (SUPABASE_ANON_KEY) {
+      setTimeout(() => testConnection(), 1000);
+    }
+  </script>
+</body>
+</html>

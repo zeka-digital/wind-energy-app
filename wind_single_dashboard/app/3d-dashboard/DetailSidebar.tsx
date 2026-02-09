@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
+import Timeline from './Timeline';
+import AnimatedNumber from './AnimatedNumber';
 
 interface TurbineData {
   name: string;
@@ -9,10 +12,19 @@ interface TurbineData {
   timestamp: string;
 }
 
+interface TurbineHistoryData extends TurbineData {
+  id: number;
+}
+
 interface DetailSidebarProps {
   turbine: TurbineData;
   onClose: () => void;
   isOpen: boolean;
+  // Timeline props
+  history?: TurbineHistoryData[];
+  selectedHistoryIndex?: number;
+  onSelectHistoryIndex?: (index: number) => void;
+  isLive?: boolean;
 }
 
 // Function to get color palette based on Active Power (kW)
@@ -45,11 +57,50 @@ function getPowerColor(power: number): { base: string; light: string; dark: stri
   };
 }
 
-export default function DetailSidebar({ turbine, onClose, isOpen }: DetailSidebarProps) {
+// Get gradient classes for power card based on value
+function getPowerCardStyle(power: number): { gradient: string; border: string; text: string } {
+  if (power <= 500) {
+    return {
+      gradient: 'from-slate-50 to-slate-100',
+      border: 'border-slate-300',
+      text: 'text-slate-700',
+    };
+  }
+  if (power <= 1000) {
+    return {
+      gradient: 'from-amber-50 to-amber-100',
+      border: 'border-amber-300',
+      text: 'text-amber-700',
+    };
+  }
+  if (power <= 2000) {
+    return {
+      gradient: 'from-green-50 to-green-100',
+      border: 'border-green-300',
+      text: 'text-green-700',
+    };
+  }
+  return {
+    gradient: 'from-blue-50 to-blue-100',
+    border: 'border-blue-300',
+    text: 'text-blue-700',
+  };
+}
+
+export default function DetailSidebar({
+  turbine,
+  onClose,
+  isOpen,
+  history = [],
+  selectedHistoryIndex = -1,
+  onSelectHistoryIndex = () => {},
+  isLive = true,
+}: DetailSidebarProps) {
   const desktopCanvasRef = useRef<HTMLCanvasElement>(null);
   const mobileCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // Animated 2D Wind Turbine using Canvas - Renders both Desktop and Mobile
+  // Reactive to turbine data changes (Live/History mode)
   useEffect(() => {
     const canvases = [desktopCanvasRef.current, mobileCanvasRef.current].filter(Boolean);
     if (canvases.length === 0) return;
@@ -60,7 +111,7 @@ export default function DetailSidebar({ turbine, onClose, isOpen }: DetailSideba
     let rotation = 0;
     let animationId: number;
 
-    // Calculate rotation speed based on wind speed
+    // Calculate rotation speed based on wind speed (REACTIVE to data changes)
     const rotationSpeed = Math.min(0.02 + (turbine.windSpeed / 15) * 0.08, 0.1);
 
     // Get color palette based on active power
@@ -201,14 +252,14 @@ export default function DetailSidebar({ turbine, onClose, isOpen }: DetailSideba
             </h2>
             <button
               onClick={onClose}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-semibold shadow-md hover:shadow-lg"
+              className="px-5 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-[16px] transition-all duration-300 font-semibold shadow-lg hover:shadow-xl hover:scale-105"
             >
               ← Back
             </button>
           </div>
 
-          {/* 2D Animated Turbine - Desktop (Always Visible) */}
-          <div className="mb-8 bg-gradient-to-b from-blue-50 to-blue-100 rounded-xl p-6 shadow-inner">
+          {/* 2D Animated Turbine - Desktop (Always Visible) - iPhone Style */}
+          <div className="mb-6 bg-gradient-to-b from-blue-50 to-blue-100 rounded-[28px] p-6 shadow-lg">
             <h3 className="text-lg font-semibold text-gray-700 mb-4 text-center">
               Turbine Animation
             </h3>
@@ -217,56 +268,83 @@ export default function DetailSidebar({ turbine, onClose, isOpen }: DetailSideba
                 ref={desktopCanvasRef}
                 width={280}
                 height={280}
-                className="bg-white/60 rounded-lg shadow-md"
+                className="bg-white/60 rounded-[24px] shadow-md"
               />
             </div>
           </div>
 
-          {/* Current Data */}
+          {/* Timeline - Desktop - Mac Dock Style */}
+          {history.length > 0 && (
+            <div className="mb-8">
+              <Timeline
+                history={history}
+                selectedIndex={selectedHistoryIndex}
+                onSelectIndex={onSelectHistoryIndex}
+                isLive={isLive}
+                variant="sidebar"
+              />
+            </div>
+          )}
+
+          {/* Current Data - Dynamic iPhone Style Cards */}
           <div className="mb-8">
             <h3 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
               <span className="mr-2">📊</span>
-              Current Readings
+              {isLive ? 'Live Readings' : 'Historical Data'}
             </h3>
             <div className="space-y-4">
-              {/* Active Power */}
-              <div className="bg-green-50 rounded-lg p-5 border-l-4 border-green-500 shadow-sm hover:shadow-md transition-shadow">
+              {/* Active Power - Dynamic Color */}
+              <motion.div
+                layout
+                className={`bg-gradient-to-br ${getPowerCardStyle(turbine.activePower).gradient} rounded-[20px] p-5 shadow-lg hover:shadow-xl transition-all duration-300 border ${getPowerCardStyle(turbine.activePower).border}`}
+              >
                 <div className="flex justify-between items-center">
                   <span className="text-gray-700 font-medium text-lg">
                     ⚡ Active Power
                   </span>
-                  <span className="text-green-700 font-bold text-2xl">
-                    {turbine.activePower.toFixed(1)} kW
+                  <span className={`${getPowerCardStyle(turbine.activePower).text} font-bold text-2xl`}>
+                    <AnimatedNumber value={turbine.activePower} decimals={1} suffix=" kW" />
                   </span>
                 </div>
-              </div>
+              </motion.div>
 
               {/* Wind Speed */}
-              <div className="bg-blue-50 rounded-lg p-5 border-l-4 border-blue-500 shadow-sm hover:shadow-md transition-shadow">
+              <motion.div
+                layout
+                className="bg-gradient-to-br from-sky-50 to-sky-100 rounded-[20px] p-5 shadow-lg hover:shadow-xl transition-all duration-300 border border-sky-200"
+              >
                 <div className="flex justify-between items-center">
                   <span className="text-gray-700 font-medium text-lg">
                     🌬️ Wind Speed
                   </span>
-                  <span className="text-blue-700 font-bold text-2xl">
-                    {turbine.windSpeed.toFixed(1)} m/s
+                  <span className="text-sky-700 font-bold text-2xl">
+                    <AnimatedNumber value={turbine.windSpeed} decimals={1} suffix=" m/s" />
                   </span>
                 </div>
-              </div>
+              </motion.div>
 
               {/* Timestamp */}
-              <div className="bg-purple-50 rounded-lg p-5 border-l-4 border-purple-500 shadow-sm hover:shadow-md transition-shadow">
+              <motion.div
+                layout
+                className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-[20px] p-5 shadow-lg hover:shadow-xl transition-all duration-300 border border-purple-200"
+              >
                 <div className="flex justify-between items-center">
                   <span className="text-gray-700 font-medium text-lg">
                     🕐 Timestamp
                   </span>
-                  <span className="text-purple-700 font-bold text-lg">
+                  <motion.span
+                    key={turbine.timestamp}
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-purple-700 font-bold text-lg"
+                  >
                     {new Date(turbine.timestamp).toLocaleString('th-TH', {
                       dateStyle: 'short',
                       timeStyle: 'medium'
                     })}
-                  </span>
+                  </motion.span>
                 </div>
-              </div>
+              </motion.div>
             </div>
           </div>
 
@@ -353,8 +431,8 @@ export default function DetailSidebar({ turbine, onClose, isOpen }: DetailSideba
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto overscroll-contain p-6">
 
-            {/* 2D Animated Turbine - Mobile */}
-            <div className="mb-6 bg-gradient-to-b from-blue-50 to-blue-100 rounded-xl p-4 shadow-inner">
+            {/* 2D Animated Turbine - Mobile - iPhone Style */}
+            <div className="mb-4 bg-gradient-to-b from-blue-50 to-blue-100 rounded-[24px] p-4 shadow-lg">
               <h3 className="text-base font-semibold text-gray-700 mb-3 text-center">
                 Turbine Animation
               </h3>
@@ -363,56 +441,83 @@ export default function DetailSidebar({ turbine, onClose, isOpen }: DetailSideba
                   ref={mobileCanvasRef}
                   width={200}
                   height={200}
-                  className="bg-white/60 rounded-lg shadow-md"
+                  className="bg-white/60 rounded-[20px] shadow-md"
                 />
               </div>
             </div>
 
-            {/* Current Data - Compact */}
+            {/* Timeline - Mobile - Mac Dock Style */}
+            {history.length > 0 && (
+              <div className="mb-6">
+                <Timeline
+                  history={history}
+                  selectedIndex={selectedHistoryIndex}
+                  onSelectIndex={onSelectHistoryIndex}
+                  isLive={isLive}
+                  variant="sidebar"
+                />
+              </div>
+            )}
+
+            {/* Current Data - Dynamic iPhone Style Cards */}
             <div className="mb-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
                 <span className="mr-2">📊</span>
-                Current Readings
+                {isLive ? 'Live Readings' : 'Historical Data'}
               </h3>
               <div className="space-y-3">
-                {/* Active Power */}
-                <div className="bg-green-50 rounded-lg p-4 border-l-4 border-green-500 shadow-sm">
+                {/* Active Power - Dynamic Color */}
+                <motion.div
+                  layout
+                  className={`bg-gradient-to-br ${getPowerCardStyle(turbine.activePower).gradient} rounded-[18px] p-4 shadow-lg border ${getPowerCardStyle(turbine.activePower).border}`}
+                >
                   <div className="flex justify-between items-center">
                     <span className="text-gray-700 font-medium text-base">
                       ⚡ Active Power
                     </span>
-                    <span className="text-green-700 font-bold text-xl">
-                      {turbine.activePower.toFixed(1)} kW
+                    <span className={`${getPowerCardStyle(turbine.activePower).text} font-bold text-xl`}>
+                      <AnimatedNumber value={turbine.activePower} decimals={1} suffix=" kW" />
                     </span>
                   </div>
-                </div>
+                </motion.div>
 
                 {/* Wind Speed */}
-                <div className="bg-blue-50 rounded-lg p-4 border-l-4 border-blue-500 shadow-sm">
+                <motion.div
+                  layout
+                  className="bg-gradient-to-br from-sky-50 to-sky-100 rounded-[18px] p-4 shadow-lg border border-sky-200"
+                >
                   <div className="flex justify-between items-center">
                     <span className="text-gray-700 font-medium text-base">
                       🌬️ Wind Speed
                     </span>
-                    <span className="text-blue-700 font-bold text-xl">
-                      {turbine.windSpeed.toFixed(1)} m/s
+                    <span className="text-sky-700 font-bold text-xl">
+                      <AnimatedNumber value={turbine.windSpeed} decimals={1} suffix=" m/s" />
                     </span>
                   </div>
-                </div>
+                </motion.div>
 
                 {/* Timestamp */}
-                <div className="bg-purple-50 rounded-lg p-4 border-l-4 border-purple-500 shadow-sm">
+                <motion.div
+                  layout
+                  className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-[18px] p-4 shadow-lg border border-purple-200"
+                >
                   <div className="flex justify-between items-center">
                     <span className="text-gray-700 font-medium text-base">
                       🕐 Timestamp
                     </span>
-                    <span className="text-purple-700 font-bold text-sm">
+                    <motion.span
+                      key={turbine.timestamp}
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-purple-700 font-bold text-sm"
+                    >
                       {new Date(turbine.timestamp).toLocaleString('th-TH', {
                         dateStyle: 'short',
                         timeStyle: 'medium'
                       })}
-                    </span>
+                    </motion.span>
                   </div>
-                </div>
+                </motion.div>
               </div>
             </div>
 

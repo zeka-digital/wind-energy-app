@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 interface TurbineData {
   name: string;
@@ -11,11 +11,18 @@ interface TurbineData {
   timestamp: string;
 }
 
+interface TurbineHistoryData extends TurbineData {
+  id: number;
+}
+
 // CORS headers for ngrok and Vercel access
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, ngrok-skip-browser-warning',
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+  'Pragma': 'no-cache',
+  'Expires': '0',
 };
 
 export async function OPTIONS() {
@@ -24,73 +31,63 @@ export async function OPTIONS() {
 
 export async function GET() {
   try {
-    // Path to the CSV results directory
-    const resultDir = path.join(process.cwd(), '..', 'enos_scraper', 'result');
+    // Fetch latest 5 measurements for each turbine
+    const { data: measurements, error } = await supabase
+      .from('wind_measurements')
+      .select('id, timestamp, turbine_name, active_power, wind_speed')
+      .order('timestamp', { ascending: false })
+      .limit(100); // Get more data to ensure we have 5 per turbine
 
-    // Read all files in the directory
-    const files = await fs.readdir(resultDir);
-
-    // Filter only CSV files and sort by name (which includes date)
-    const csvFiles = files
-      .filter(file => file.endsWith('.csv'))
-      .sort()
-      .reverse(); // Get the latest file first
-
-    if (csvFiles.length === 0) {
-      return NextResponse.json({ error: 'No CSV files found' }, { status: 404, headers: corsHeaders });
+    if (error) {
+      console.error('Supabase error:', error);
+      return NextResponse.json(
+        { error: 'Failed to fetch wind data', details: error.message },
+        { status: 500, headers: corsHeaders }
+      );
     }
 
-    // Read the latest CSV file
-    const latestFile = csvFiles[0];
-    const filePath = path.join(resultDir, latestFile);
-    const fileContent = await fs.readFile(filePath, 'utf-8');
+    if (!measurements || measurements.length === 0) {
+      return NextResponse.json(
+        { error: 'No measurements found' },
+        { status: 404, headers: corsHeaders }
+      );
+    }
 
-    // Parse CSV
-    const lines = fileContent.trim().split('\n');
+    // Group measurements by turbine and get latest 5 for each
+    const turbineHistoryMap = new Map<string, TurbineHistoryData[]>();
 
-    // Process data - keep only the latest entry for each turbine
-    const turbineMap = new Map<string, TurbineData>();
-
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-
-      const values = line.split(',');
-      const timestamp = values[0];
-      const turbineName = values[1];
-      const activePowerStr = values[2];
-      const windSpeedStr = values[3];
-
-      // Parse numbers by removing units (kW and m/s)
-      const activePower = parseFloat(activePowerStr.replace(' kW', '').trim());
-      const windSpeed = parseFloat(windSpeedStr.replace(' m/s', '').trim());
-
-      // Keep only the latest reading for each turbine
-      if (!turbineMap.has(turbineName) || timestamp > turbineMap.get(turbineName)!.timestamp) {
-        turbineMap.set(turbineName, {
-          name: turbineName,
-          activePower,
-          windSpeed,
-          timestamp
+    for (const m of measurements) {
+      const existing = turbineHistoryMap.get(m.turbine_name) || [];
+      if (existing.length < 5) {
+        existing.push({
+          name: m.turbine_name,
+          activePower: m.active_power,
+          windSpeed: m.wind_speed,
+          timestamp: m.timestamp,
+          id: m.id,
         });
+        turbineHistoryMap.set(m.turbine_name, existing);
       }
     }
 
-    // Convert map to array and sort by turbine name
-    const turbines = Array.from(turbineMap.values()).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
+    // Convert to array format with history
+    const turbinesWithHistory = Array.from(turbineHistoryMap.entries())
+      .map(([name, history]) => ({
+        name,
+        current: history[0], // Latest data
+        history: history.slice().reverse(), // Oldest to newest for timeline
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
 
     return NextResponse.json({
-      file: latestFile,
-      turbineCount: turbines.length,
-      turbines
+      turbineCount: turbinesWithHistory.length,
+      turbines: turbinesWithHistory,
     }, { headers: corsHeaders });
 
   } catch (error) {
-    console.error('Error reading wind data:', error);
+    console.error('Error fetching wind data:', error);
     return NextResponse.json(
-      { error: 'Failed to read wind data', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to fetch wind data', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500, headers: corsHeaders }
     );
   }
